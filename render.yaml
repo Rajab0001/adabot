@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: adabot-test
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --bind 0.0.0.0:$PORT webhook:app
+    healthCheckPath: /health
+    envVars:
+      - key: WA_DATABASE
+        value: /tmp/adabot-test.sqlite3
+      - key: WA_VERIFY_TOKEN
+        generateValue: true
+      - key: WA_APP_SECRET
+        sync: false
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      - key: WA_GRAPH_VERSION
+        sync: false
+      - key: WA_PHONE_NUMBER_ID
+        sync: false
