@@ -30,7 +30,7 @@ class OrderChat:
         self.address = ""
         self.order_id = None
 
-    def payment_instructions(self, order_id, total):
+    def payment_instructions(self, order_id, total, fulfillment):
         bank = os.environ.get("PAYMENT_BANK", "").strip()
         account_number = os.environ.get("PAYMENT_ACCOUNT_NUMBER", "").strip()
         account_name = os.environ.get("PAYMENT_ACCOUNT_NAME", "").strip()
@@ -39,12 +39,18 @@ class OrderChat:
                 f"Order AP-{order_id:04d} received. Payment instructions are not available yet. "
                 "Please contact staff before making a transfer."
             )
+        amount_line = (
+            f"Amount to transfer: {money(total)}"
+            if fulfillment == "pickup"
+            else f"Food subtotal: {money(total)}\\n"
+                 "Delivery fee is pending staff confirmation. Wait for staff to confirm the final amount before transferring."
+        )
         return (
             f"Order AP-{order_id:04d} received.\\n"
-            f"Amount to transfer: {money(total)}\\n"
+            f"{amount_line}\\n"
             f"Bank: {bank}\\nAccount number: {account_number}\\n"
             f"Account name: {account_name}\\n\\n"
-            "After transferring, reply PAID. Your order will remain pending until staff verifies the payment."
+            "After transferring the confirmed amount, reply PAID. Your order will remain pending until staff verifies the payment."
         )
 
     def summary(self):
@@ -106,7 +112,7 @@ class OrderChat:
             if self.customer:
                 self.order_id = row.lastrowid
                 self.stage = "payment"
-                return self.payment_instructions(row.lastrowid, total)
+                return self.payment_instructions(row.lastrowid, total, self.fulfillment)
             self.reset()
             return f"Test order AP-{row.lastrowid:04d} received. Saved locally for review."
 
