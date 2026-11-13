@@ -6,6 +6,8 @@ from pathlib import Path
 
 
 MENU = json.loads(Path(__file__).with_name("menu.json").read_text(encoding="utf-8"))
+PAGE_SIZE = 8
+ASSETS = Path(__file__).with_name("menu-assets")
 
 
 def money(amount):
@@ -31,6 +33,26 @@ class OrderChat:
         self.order_id = None
         self.selected_image = None
         self.response_image = None
+        self.page_start = 0
+        self.category = ""
+
+    def item_page(self):
+        end = min(self.page_start + PAGE_SIZE, len(self.items))
+        lines = [self.category]
+        lines.extend(
+            f"{i}. {name} — {money(price) if price is not None else 'price confirmed by staff'}"
+            for i, (name, price, *_) in enumerate(self.items[self.page_start:end], 1)
+        )
+        if end < len(self.items):
+            lines.append("Type next to see more.")
+        if self.page_start:
+            lines.append("Type previous to go back.")
+        lines.append("Choose an item number or type back.")
+        page_number = self.page_start // PAGE_SIZE + 1
+        slug = self.category.casefold().replace(" & ", "-").replace(" ", "-")
+        catalogue = ASSETS / f"catalogue-{slug}-{page_number}.jpg"
+        self.response_image = catalogue.name if catalogue.is_file() else None
+        return "\n".join(lines)
 
     def payment_instructions(self, order_id, total, fulfillment, pending_price):
         bank = os.environ.get("PAYMENT_BANK", "").strip()
@@ -102,6 +124,16 @@ class OrderChat:
             self.stage = "fulfillment"
             self.address = ""
             return "Pickup or delivery?"
+        if self.stage == "item" and command in {"next", "more"}:
+            if self.page_start + PAGE_SIZE < len(self.items):
+                self.page_start += PAGE_SIZE
+                return self.item_page()
+            return "That is the last page. Choose an item number or type previous."
+        if self.stage == "item" and command == "previous":
+            if self.page_start:
+                self.page_start = max(0, self.page_start - PAGE_SIZE)
+                return self.item_page()
+            return "You are on the first page. Choose an item number or type back."
         if self.stage == "fulfillment" and command in {"pickup", "delivery"}:
             self.fulfillment = command
             if command == "delivery":
@@ -156,14 +188,14 @@ class OrderChat:
         number = int(command) if command.isascii() and command.isdecimal() and len(command) <= 3 else 0
         if self.stage == "menu" and 1 <= number <= len(MENU):
             category = list(MENU)[number - 1]
+            self.category = category
             self.items = MENU[category]
+            self.page_start = 0
             self.stage = "item"
-            return "\n".join([category, *(
-                f"{i}. {name} — {money(price) if price is not None else 'price confirmed by staff'}"
-                for i, (name, price, *_) in enumerate(self.items, 1)
-            ), "Choose an item or type back."])
-        if self.stage == "item" and 1 <= number <= len(self.items):
-            item = self.items[number - 1]
+            return self.item_page()
+        page_count = min(PAGE_SIZE, max(0, len(self.items) - self.page_start))
+        if self.stage == "item" and 1 <= number <= page_count:
+            item = self.items[self.page_start + number - 1]
             self.selected = (item[0], item[1])
             self.selected_image = item[2] if len(item) > 2 else None
             self.response_image = self.selected_image
