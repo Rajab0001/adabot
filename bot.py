@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from contextlib import nullcontext
 from pathlib import Path
@@ -27,6 +28,24 @@ class OrderChat:
         self.cart = {}
         self.fulfillment = ""
         self.address = ""
+        self.order_id = None
+
+    def payment_instructions(self, order_id, total):
+        bank = os.environ.get("PAYMENT_BANK", "").strip()
+        account_number = os.environ.get("PAYMENT_ACCOUNT_NUMBER", "").strip()
+        account_name = os.environ.get("PAYMENT_ACCOUNT_NAME", "").strip()
+        if not all((bank, account_number, account_name)):
+            return (
+                f"Order AP-{order_id:04d} received. Payment instructions are not available yet. "
+                "Please contact staff before making a transfer."
+            )
+        return (
+            f"Order AP-{order_id:04d} received.\\n"
+            f"Amount to transfer: {money(total)}\\n"
+            f"Bank: {bank}\\nAccount number: {account_number}\\n"
+            f"Account name: {account_name}\\n\\n"
+            "After transferring, reply PAID. Your order will remain pending until staff verifies the payment."
+        )
 
     def summary(self):
         lines = [
@@ -69,11 +88,14 @@ class OrderChat:
             self.address = message
             return self.review()
         if self.stage == "review" and command == "place order":
+            total = sum(price * qty for (_, price), qty in self.cart.items())
             order = dict(
                 items=[dict(name=name, price=price, quantity=qty)
                        for (name, price), qty in self.cart.items()],
                 fulfillment=self.fulfillment,
                 address=self.address,
+                total=total,
+                payment_status="pending",
             )
             if self.customer:
                 order["customer"] = self.customer
@@ -81,10 +103,30 @@ class OrderChat:
                 row = self.database.execute(
                     "INSERT INTO orders (details) VALUES (?)", (json.dumps(order),)
                 )
-            self.reset()
             if self.customer:
-                return f"Order AP-{row.lastrowid:04d} received. Please wait for staff confirmation."
+                self.order_id = row.lastrowid
+                self.stage = "payment"
+                return self.payment_instructions(row.lastrowid, total)
+            self.reset()
             return f"Test order AP-{row.lastrowid:04d} received. Saved locally for review."
+
+        if self.stage == "payment" and command == "paid" and self.order_id:
+            row = self.database.execute(
+                "SELECT details FROM orders WHERE id = ?", (self.order_id,)
+            ).fetchone()
+            if row:
+                order = json.loads(row[0])
+                order["payment_status"] = "reported_by_customer"
+                self.database.execute(
+                    "UPDATE orders SET details = ? WHERE id = ?",
+                    (json.dumps(order), self.order_id),
+                )
+                self.stage = "payment_reported"
+                return (
+                    f"Thanks. Order AP-{self.order_id:04d} is marked as payment reported, "
+                    "not yet verified. Staff will confirm once the transfer is checked."
+                )
+            return "I couldn't find that order. Please contact staff for help."
         number = int(command) if command.isascii() and command.isdecimal() and len(command) <= 3 else 0
         if self.stage == "menu" and 1 <= number <= len(MENU):
             category = list(MENU)[number - 1]
