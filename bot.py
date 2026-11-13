@@ -30,6 +30,7 @@ class OrderChat:
         self.address = ""
         self.order_id = None
         self.selected_image = None
+        self.response_image = None
 
     def payment_instructions(self, order_id, total, fulfillment, pending_price):
         bank = os.environ.get("PAYMENT_BANK", "").strip()
@@ -77,6 +78,7 @@ class OrderChat:
         return "\n".join([*lines, total_text])
 
     def reply(self, message):
+        self.response_image = None
         message = message.strip()
         command = message.casefold()
         if command == "cancel":
@@ -86,6 +88,7 @@ class OrderChat:
             return "In the live bot, staff will handle help requests. Type menu to browse or cancel to clear your cart."
         if command in {"hi", "menu", "back"}:
             self.stage = "menu"
+            self.response_image = "category-menu.png"
             categories = "\n".join(
                 f"{i}. {name}" for i, name in enumerate(MENU, 1)
             )
@@ -163,6 +166,7 @@ class OrderChat:
             item = self.items[number - 1]
             self.selected = (item[0], item[1])
             self.selected_image = item[2] if len(item) > 2 else None
+            self.response_image = self.selected_image
             self.stage = "quantity"
             return f"How many orders of {self.selected[0]}? Enter 1–99."
         if self.stage == "quantity" and 1 <= number <= 99:

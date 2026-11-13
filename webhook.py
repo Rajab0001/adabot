@@ -38,15 +38,13 @@ def process(db, message):
             if "selected" in state:
                 state["selected"] = tuple(state["selected"])
             vars(chat).update(state)
-        previous_stage = chat.stage
         reply = chat.reply(message["text"]["body"])
         image_url = None
-        if previous_stage == "item" and chat.stage == "quantity" and chat.selected_image:
-            public_url = os.environ.get("WA_PUBLIC_URL", "").rstrip("/")
-            if public_url:
-                image_url = f"{public_url}/menu-assets/{chat.selected_image}"
+        if chat.response_image:
+            public_url = os.environ.get("WA_PUBLIC_URL", "https://adabot-rkes.onrender.com").rstrip("/")
+            image_url = f"{public_url}/menu-assets/{chat.response_image}"
         state = {key: value for key, value in vars(chat).items()
-                 if key not in {"database", "customer"}}
+                 if key not in {"database", "customer", "response_image"}}
         state["cart"] = [[name, price, qty] for (name, price), qty in chat.cart.items()]
         db.execute("INSERT OR REPLACE INTO sessions VALUES (?, ?)", (customer, json.dumps(state)))
         db.execute("INSERT INTO events (id, reply, image_url, sent) VALUES (?, ?, ?, 0)",
@@ -68,7 +66,7 @@ def send_reply(phone_id, recipient, reply, image_url=None):
                  "Content-Type": "application/json"},
     )
     with urlopen(request, timeout=8) as response:
-        logger.info("WhatsApp reply accepted (HTTP %s)", response.status)
+        print(f"WhatsApp reply accepted: kind={'image' if image_url else 'text'} HTTP {response.status}", flush=True)
 
 
 def receive(event):
@@ -91,6 +89,13 @@ def receive(event):
                 value = change.get("value", {})
                 metadata_phone_id = value.get("metadata", {}).get("phone_number_id")
                 messages = value.get("messages", [])
+                statuses = value.get("statuses", [])
+                print(
+                    f"Webhook change received: field={change.get('field', 'unknown')} "
+                    f"phone_id_match={metadata_phone_id == phone_id} "
+                    f"inbound_messages={len(messages)} statuses={len(statuses)}",
+                    flush=True,
+                )
                 if metadata_phone_id != phone_id:
                     logger.warning(
                         "Ignoring webhook change: phone number ID mismatch; expected=%s received=%s messages=%d",
@@ -163,7 +168,7 @@ def app(environ, start_response):
             logger.warning("Rejected webhook POST: signature validation failed")
             return respond("403 Forbidden", "Invalid signature")
         event = json.loads(raw)
-        logger.info("Received signed webhook POST: bytes=%d", length)
+        print(f"Received signed webhook POST: bytes={length}", flush=True)
         receive(event)
     except (ValueError, TypeError, KeyError):
         logger.exception("Rejected malformed webhook event or missing configuration")
