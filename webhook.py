@@ -3,9 +3,11 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
 import os
 import sqlite3
 from contextlib import closing
+from pathlib import Path
 from urllib.parse import parse_qs
 from urllib.request import Request, urlopen
 
@@ -13,6 +15,7 @@ from bot import OrderChat
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+MENU_ASSETS = Path(__file__).with_name("menu-assets")
 
 
 def process(db, message):
@@ -21,7 +24,7 @@ def process(db, message):
     with db:
         db.execute("BEGIN IMMEDIATE")
         previous = db.execute(
-            "SELECT reply, sent FROM events WHERE id = ?", (message_id,)
+            "SELECT reply, image_url, sent FROM events WHERE id = ?", (message_id,)
         ).fetchone()
         if previous:
             return previous
@@ -35,18 +38,29 @@ def process(db, message):
             if "selected" in state:
                 state["selected"] = tuple(state["selected"])
             vars(chat).update(state)
+        previous_stage = chat.stage
         reply = chat.reply(message["text"]["body"])
+        image_url = None
+        if previous_stage == "item" and chat.stage == "quantity" and chat.selected_image:
+            public_url = os.environ.get("WA_PUBLIC_URL", "").rstrip("/")
+            if public_url:
+                image_url = f"{public_url}/menu-assets/{chat.selected_image}"
         state = {key: value for key, value in vars(chat).items()
                  if key not in {"database", "customer"}}
         state["cart"] = [[name, price, qty] for (name, price), qty in chat.cart.items()]
         db.execute("INSERT OR REPLACE INTO sessions VALUES (?, ?)", (customer, json.dumps(state)))
-        db.execute("INSERT INTO events VALUES (?, ?, 0)", (message_id, reply))
-    return reply, False
+        db.execute("INSERT INTO events (id, reply, image_url, sent) VALUES (?, ?, ?, 0)",
+                   (message_id, reply, image_url))
+    return reply, image_url, False
 
 
-def send_reply(phone_id, recipient, reply):
+def send_reply(phone_id, recipient, reply, image_url=None):
     version = os.environ["WA_GRAPH_VERSION"]
-    body = dict(messaging_product="whatsapp", to=recipient, type="text", text={"body": reply})
+    if image_url:
+        body = dict(messaging_product="whatsapp", to=recipient, type="image",
+                    image={"link": image_url, "caption": reply})
+    else:
+        body = dict(messaging_product="whatsapp", to=recipient, type="text", text={"body": reply})
     request = Request(
         f"https://graph.facebook.com/{version}/{phone_id}/messages",
         data=json.dumps(body).encode(),
@@ -66,7 +80,10 @@ def receive(event):
     sent_count = 0
     with closing(sqlite3.connect(os.environ["WA_DATABASE"])) as db:
         db.execute("CREATE TABLE IF NOT EXISTS sessions (customer TEXT PRIMARY KEY, state TEXT)")
-        db.execute("CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, reply TEXT, sent INTEGER)")
+        db.execute("CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, reply TEXT, image_url TEXT, sent INTEGER)")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(events)")}
+        if "image_url" not in columns:
+            db.execute("ALTER TABLE events ADD COLUMN image_url TEXT")
         for entry in event.get("entry", []):
             entry_count += 1
             for change in entry.get("changes", []):
@@ -86,9 +103,9 @@ def receive(event):
                         logger.info("Ignoring unsupported inbound message type=%s", message.get("type"))
                         continue
                     text_message_count += 1
-                    reply, sent = process(db, message)
+                    reply, image_url, sent = process(db, message)
                     if not sent:
-                        send_reply(phone_id, message["from"], reply)
+                        send_reply(phone_id, message["from"], reply, image_url)
                         with db:
                             db.execute("UPDATE events SET sent = 1 WHERE id = ?", (message["id"],))
                         sent_count += 1
@@ -107,6 +124,22 @@ def app(environ, start_response):
 
     if environ["PATH_INFO"] == "/health" and environ["REQUEST_METHOD"] == "GET":
         return respond("200 OK", "OK")
+    if environ["PATH_INFO"].startswith("/menu-assets/"):
+        if environ["REQUEST_METHOD"] != "GET":
+            return respond("405 Method Not Allowed", "Method not allowed")
+        filename = environ["PATH_INFO"].removeprefix("/menu-assets/")
+        if not filename or Path(filename).name != filename:
+            return respond("404 Not Found", "Not found")
+        asset = MENU_ASSETS / filename
+        if not asset.is_file():
+            return respond("404 Not Found", "Not found")
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        with asset.open("rb") as image:
+            data = image.read()
+        start_response("200 OK", [("Content-Type", content_type),
+                                   ("Content-Length", str(len(data))),
+                                   ("Cache-Control", "public, max-age=86400")])
+        return [data]
     if environ["PATH_INFO"] != "/webhook":
         return respond("404 Not Found", "Not found")
     if environ["REQUEST_METHOD"] == "GET":

@@ -1,238 +1,72 @@
 {
   "Rice": [
-    [
-      "Jollof Rice",
-      900
-    ],
-    [
-      "Fried Rice",
-      900
-    ],
-    [
-      "Coconut Rice",
-      1000
-    ],
-    [
-      "Asun Jollof Rice",
-      1200
-    ],
-    [
-      "Asun Fried Rice",
-      1500
-    ]
+    ["Jollof Rice", 900, "ada-jollof-card.png"],
+    ["Fried Rice", 900, "ada-fried-card.png"],
+    ["Coconut Rice", 1200, "IMG_5949-rice-only.png"]
   ],
   "Pasta": [
-    [
-      "Spicy Jollof Pasta",
-      900
-    ],
-    [
-      "Chicken Pasta",
-      1200
-    ],
-    [
-      "Asun Spaghetti",
-      1500
-    ]
+    ["Spicy Jollof Pasta", 900, "ada-pasta-card.png"]
   ],
-  "Soups & Swallow": [
-    [
-      "Eba",
-      500
-    ]
+  "Swallows": [
+    ["Eba", 500],
+    ["Semo", 500],
+    ["Poundo Yam", 1000]
   ],
-  "Grill & Proteins": [
-    [
-      "Fried Fish",
-      1500
-    ],
-    [
-      "Fried Chicken",
-      2500
-    ],
-    [
-      "Pepper Fried Chicken",
-      3000
-    ],
-    [
-      "Fried Pepper Meat",
-      500
-    ],
-    [
-      "Gizzard",
-      1500
-    ],
-    [
-      "Pepper Gizzard Kebabs",
-      2000
-    ],
-    [
-      "Asun Roasted Goat",
-      4000
-    ]
+  "Proteins": [
+    ["Fried Fish (₦2,000 portion)", 2000],
+    ["Fried Fish (₦2,500 portion)", 2500],
+    ["Fried Fish (₦3,000 portion)", 3000],
+    ["Fried Chicken (₦2,000 portion)", 2000],
+    ["Fried Chicken (₦2,500 portion)", 2500],
+    ["Fried Chicken (₦3,000 portion)", 3000],
+    ["Gizzard (₦1,500 portion)", 1500],
+    ["Gizzard (₦2,000 portion)", 2000]
   ],
-  "Shawarma & Sides": [
-    [
-      "Shawarma 1 (one sausage)",
-      3000
-    ],
-    [
-      "Shawarma 2 (two sausages)",
-      4000
-    ],
-    [
-      "Shawarma 3 (two sausages + extra chicken)",
-      5000
-    ],
-    [
-      "Moi Moi",
-      500
-    ],
-    [
-      "Fried Plantain",
-      500
-    ],
-    [
-      "Egg",
-      500
-    ],
-    [
-      "Salad",
-      500
-    ],
-    [
-      "Ponmo",
-      500
-    ]
+  "Grills": [
+    ["Grilled Chicken & Sweet Potato Chips (₦4,500–₦10,000; final price confirmed by staff)", null, "ada-grill-card.png"]
+  ],
+  "Shawarma": [
+    ["Shawarma 1 (one sausage)", 3000],
+    ["Shawarma 2 (two sausages)", 4000],
+    ["Shawarma 3 (two sausages + extra chicken)", 5000]
+  ],
+  "Sides & Extras": [
+    ["Takeaway pack with spoon (per pack)", 300],
+    ["Moi Moi", 500],
+    ["Egg", 500],
+    ["Salad", 500],
+    ["Ponmo", 500]
   ],
   "Drinks": [
-    [
-      "Bottled Water 70cl",
-      300
-    ],
-    [
-      "Coke 60cl",
-      600
-    ],
-    [
-      "7UP 50cl",
-      600
-    ],
-    [
-      "Pepsi",
-      600
-    ],
-    [
-      "Fanta",
-      600
-    ],
-    [
-      "Sprite",
-      600
-    ],
-    [
-      "Fayrouz",
-      1000
-    ],
-    [
-      "Malta Guinness Can",
-      1000
-    ],
-    [
-      "Schweppes Chapman",
-      1000
-    ],
-    [
-      "Schweppes Virgin Mojito",
-      1000
-    ],
-    [
-      "Schweppes Pineapple",
-      1200
-    ],
-    [
-      "Zobo (large)",
-      1500
-    ],
-    [
-      "5Alive Berry Blast (large)",
-      2000
-    ],
-    [
-      "5Alive Pulpy Orange (large)",
-      1800
-    ],
-    [
-      "5Alive Pulpy Orange (small)",
-      1200
-    ],
-    [
-      "5Alive Mango",
-      2000
-    ],
-    [
-      "Chivita Active Citrus 1L",
-      2500
-    ],
-    [
-      "Chivita Exotic Pineapple & Coconut 1L",
-      2500
-    ],
-    [
-      "Chivita Active Zest",
-      2500
-    ],
-    [
-      "Chi Exotic Multi Fruit",
-      2500
-    ],
-    [
-      "Exotic Pineapple (small)",
-      1500
-    ],
-    [
-      "Sosa Orange",
-      1500
-    ],
-    [
-      "Sosa (small)",
-      600
-    ],
-    [
-      "Zizou Pineapple",
-      500
-    ],
-    [
-      "Zizou Cranberry",
-      500
-    ],
-    [
-      "Nutri Milk",
-      800
-    ],
-    [
-      "Hollandia Strawberry Yoghurt",
-      2500
-    ],
-    [
-      "Hollandia Vanilla Yoghurt 1L",
-      2500
-    ],
-    [
-      "Hollandia Plain Yoghurt 1L",
-      2500
-    ],
-    [
-      "Monster Energy",
-      1600
-    ],
-    [
-      "Fearless Energy",
-      650
-    ],
-    [
-      "Predator Energy",
-      700
-    ]
+    ["Bottled Water 70cl", 300, "water.png"],
+    ["Coke 60cl", 600, "coke.png"],
+    ["7UP 50cl", 600, "7up.png"],
+    ["Pepsi", 600, "pepsi.png"],
+    ["Fanta", 600, "fanta.png"],
+    ["Sprite", 600, "sprite.png"],
+    ["Fayrouz", 1000, "fayrouz.png"],
+    ["Malta Guinness Can", 1000, "malta.png"],
+    ["Schweppes Chapman", 1000, "schweppes-chapman.png"],
+    ["Schweppes Virgin Mojito", 1000, "schweppes-mojito.png"],
+    ["Schweppes Pineapple", 1200, "schweppes-pineapple.png"],
+    ["Zobo (large)", 1500, "zobo.png"],
+    ["5Alive Berry Blast (large)", 2000, "5alive-berry.png"],
+    ["5Alive Pulpy Orange (large)", 1800, "5alive-orange-large.png"],
+    ["5Alive Pulpy Orange (small)", 1200, "5alive-orange-small.png"],
+    ["5Alive Mango", 2000, "5alive-mango.png"],
+    ["Chivita Active Citrus 1L", 2500, "chivita-citrus.png"],
+    ["Chivita Exotic Pineapple & Coconut 1L", 2500, "chivita-cocopine.png"],
+    ["Chivita Active Zest", 2500, "chivita-zest.png"],
+    ["Chi Exotic Multi Fruit", 2500, "chi-exotic-multi.png"],
+    ["Exotic Pineapple (small)", 1500, "exotic-pineapple-small.png"],
+    ["Sosa Orange", 1500, "sosa-orange.png"],
+    ["Sosa (small)", 600, "sosa-small.png"],
+    ["Nutri Milk", 800, "nutri-milk.png"],
+    ["Hollandia Strawberry Yoghurt", 2500, "hollandia-strawberry.png"],
+    ["Hollandia Vanilla Yoghurt 1L", 2500, "hollandia-vanilla.png"],
+    ["Hollandia Plain Yoghurt 1L", 2500, "hollandia-plain.png"],
+    ["Monster Energy", 1600, "monster.png"],
+    ["Fearless Energy", 650, "fearless.png"],
+    ["Predator Energy", 700, "predator.png"]
   ]
 }

@@ -19,3 +19,11 @@ services:
         sync: false
       - key: WA_PHONE_NUMBER_ID
         sync: false
+      - key: WA_PUBLIC_URL
+        value: https://adabot-rkes.onrender.com
+      - key: PAYMENT_BANK
+        sync: false
+      - key: PAYMENT_ACCOUNT_NUMBER
+        sync: false
+      - key: PAYMENT_ACCOUNT_NAME
+        sync: false
