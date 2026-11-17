@@ -16,7 +16,6 @@ from bot import OrderChat
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 MENU_ASSETS = Path(__file__).with_name("menu-assets")
-MENU_IMAGE_VERSION = "20261117-black-orange"
 
 
 def process(db, message):
@@ -43,7 +42,9 @@ def process(db, message):
         image_url = None
         if chat.response_image:
             public_url = os.environ.get("WA_PUBLIC_URL", "https://adabot-rkes.onrender.com").rstrip("/")
-            image_url = f"{public_url}/menu-assets/{chat.response_image}?v={MENU_IMAGE_VERSION}"
+            asset_path = MENU_ASSETS / chat.response_image
+            image_version = hashlib.sha256(asset_path.read_bytes()).hexdigest()[:12] if asset_path.is_file() else "missing"
+            image_url = f"{public_url}/menu-assets/{chat.response_image}?v={image_version}"
         state = {key: value for key, value in vars(chat).items()
                  if key not in {"database", "customer", "response_image"}}
         state["cart"] = [[name, price, qty] for (name, price), qty in chat.cart.items()]

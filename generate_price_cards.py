@@ -20,6 +20,7 @@ MUTED = (205, 205, 205)
 
 PRICE_CARDS = [
     ("asun-jollof-rice.jpg", "asun-jollof-card.jpg", "ASUN JOLLOF RICE", 1200),
+    ("asun-fried-basmati-rice.jpg", "asun-fried-basmati-card.jpg", "ASUN FRIED BASMATI RICE", 1500),
     ("asun-rice-gizzard.jpg", "asun-gizzard-card.jpg", "ASUN RICE WITH GIZZARD", 3500),
     ("asun-rice-fish.jpg", "asun-fish-card.jpg", "ASUN RICE WITH FISH", 5200),
     ("chicken-chips-4500.jpg", "chicken-chips-card.jpg", "CHICKEN & CHIPS", 4500),
@@ -32,6 +33,7 @@ PRICE_CARDS = [
 
 PHOTO_OVERRIDES = {
     "asun-jollof-card.jpg": "asun-jollof-rice.jpg",
+    "asun-fried-basmati-card.jpg": "asun-fried-basmati-rice.jpg",
     "asun-gizzard-card.jpg": "asun-rice-gizzard.jpg",
     "asun-fish-card.jpg": "asun-rice-fish.jpg",
     "chicken-chips-card.jpg": "chicken-chips-4500.jpg",
@@ -202,4 +204,4 @@ if __name__ == "__main__":
             page_number = page_start // 8 + 1
             make_catalogue(category, page_number, all_items[page_start:page_start + 8])
     make_category_menu()
-    print("Created 9 price cards, 11 category catalogues, and the category menu in black and orange.")
+    print("Created 10 price cards, 11 category catalogues, and the category menu in black and orange.")
