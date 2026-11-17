@@ -1,0 +1,118 @@
+Warning: fs was declared with const; use let for reassignable variables.
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect Ada WhatsApp</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111; color: #f7f2ea; padding: 24px; }
+    main { width: min(100%, 520px); border: 1px solid #34302b; border-radius: 20px; background: #1a1917; padding: 32px; box-shadow: 0 18px 60px #0008; }
+    .mark { color: #ff8a00; font-size: 13px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 12px 0; font-size: clamp(25px, 6vw, 34px); }
+    p { color: #d5cec3; line-height: 1.55; }
+    button { width: 100%; margin-top: 12px; padding: 15px 18px; border: 0; border-radius: 10px; background: #ff8a00; color: #111; font-size: 16px; font-weight: 800; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .65; }
+    #status { min-height: 48px; margin-top: 20px; padding: 12px; border-radius: 10px; background: #282522; color: #fff; white-space: pre-wrap; }
+    .small { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">Ada Place &amp; Grill</div>
+    <h1>Connect WhatsApp Business</h1>
+    <p>Connect the Ada business number so it can continue using the bot and the WhatsApp Business app. Sign in with the Meta account that manages the business, and keep the WhatsApp Business app available on the phone for the confirmation step.</p>
+    <p class="small">Meta controls the login and number verification. This page will only complete the connection for the phone number already configured for the Ada bot.</p>
+    <button id="connect" type="button" disabled>Loading Meta login…</button>
+    <div id="status" role="status" aria-live="polite">Preparing secure connection…</div>
+  </main>
+  <script>
+    const APP_ID = __APP_ID__;
+    const CONFIG_ID = __CONFIG_ID__;
+    const GRAPH_VERSION = __GRAPH_VERSION__;
+    const CSRF_TOKEN = __CSRF_TOKEN__;
+    const button = document.getElementById("connect");
+    const statusBox = document.getElementById("status");
+    let signupCode = null;
+    let sessionInfo = null;
+    let sending = false;
+
+    function show(message) { statusBox.textContent = message; }
+
+    window.fbAsyncInit = function () {
+      FB.init({appId: APP_ID, autoLogAppEvents: true, xfbml: false, version: GRAPH_VERSION});
+      button.disabled = false;
+      button.textContent = "Connect Ada WhatsApp";
+      show("Ready. Continue with the Meta account that manages Ada Place & Grill.");
+    };
+
+    window.addEventListener("message", (event) => {
+      if (!/^https:\/\/([a-z0-9-]+\.)*facebook\.com$/i.test(event.origin)) return;
+      let data = event.data;
+      try { if (typeof data === "string") data = JSON.parse(data); } catch { return; }
+      if (!data || data.type !== "WA_EMBEDDED_SIGNUP") return;
+      sessionInfo = data;
+      if (data.event === "CANCEL") {
+        show("Connection cancelled. No bot settings were changed.");
+        return;
+      }
+      if (data.event === "ERROR") {
+        show("Meta reported an error during signup. Please retry or contact support with the error shown in Meta.");
+        return;
+      }
+      maybeComplete();
+    });
+
+    function maybeComplete() {
+      if (sending || !signupCode || !sessionInfo) return;
+      if (sessionInfo.event !== "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
+        show("Meta finished a standard API signup. This flow is set to connect an existing WhatsApp Business app number, so the bot was left unchanged.");
+        return;
+      }
+      sending = true;
+      button.disabled = true;
+      show("Meta confirmed the app connection. Completing the secure server setup and chat sync…");
+      fetch("/embedded-signup/complete", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRF-Token": CSRF_TOKEN},
+        body: JSON.stringify({code: signupCode, session_info: sessionInfo})
+      }).then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "The server could not complete the connection.");
+        show("Connected. Meta confirmed this number is available in both WhatsApp Business and Cloud API.");
+      }).catch((error) => {
+        show(error.message || "The connection could not be completed. The current bot configuration remains in place.");
+        button.disabled = false;
+        sending = false;
+      });
+    }
+
+    button.addEventListener("click", () => {
+      show("Opening Meta signup… Keep the WhatsApp Business app open on the business phone.");
+      FB.login((response) => {
+        if (response && response.authResponse && response.authResponse.code) {
+          signupCode = response.authResponse.code;
+          maybeComplete();
+        } else {
+          show("Meta signup was not completed. No bot settings were changed.");
+        }
+      }, {
+        config_id: CONFIG_ID,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: {version: "v5", setup: {}}
+      });
+    });
+
+    const sdk = document.createElement("script");
+    sdk.async = true;
+    sdk.defer = true;
+    sdk.crossOrigin = "anonymous";
+    sdk.src = "https://connect.facebook.net/en_US/sdk.js";
+    document.head.appendChild(sdk);
+  </script>
+</body>
+</html>
