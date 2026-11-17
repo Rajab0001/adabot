@@ -23,6 +23,12 @@ services:
         sync: false
       - key: WA_PHONE_NUMBER_ID
         sync: false
+      - key: INBOX_DATABASE_URL
+        sync: false
+      - key: INBOX_USERNAME
+        sync: false
+      - key: INBOX_PASSWORD
+        sync: false
       - key: WA_PUBLIC_URL
         value: https://adabot-rkes.onrender.com
       - key: PAYMENT_BANK
