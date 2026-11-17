@@ -9,8 +9,10 @@ import os
 import re
 import secrets
 import sqlite3
+import psycopg
+from psycopg.rows import dict_row
 import time
-from contextlib import closing
+from contextlib import ExitStack, closing
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -175,7 +177,7 @@ def coexistence_event_count(field, value):
     return len(candidates) if isinstance(candidates, list) else 0
 
 
-def process(db, message):
+def process(db, message, inbox_db=None):
     message_id = message["id"]
     customer = message["from"]
     with db:
@@ -185,7 +187,6 @@ def process(db, message):
         ).fetchone()
         if previous:
             return previous
-        ensure_inbox_schema(db)
         inbound_type = message.get("type", "unknown")
         payload = message.get(inbound_type, {})
         if inbound_type == "text":
@@ -197,16 +198,21 @@ def process(db, message):
                 inbound_body += f" {caption}"
         else:
             inbound_body = f"[{inbound_type} message received]"
-        db.execute(
-            "INSERT OR IGNORE INTO inbox_messages "
-            "(wa_message_id, customer, direction, body, created_at, status) "
-            "VALUES (?, ?, 'inbound', ?, ?, 'received')",
-            (message_id, customer, inbound_body[:4096], int(time.time())),
-        )
-        human = db.execute(
-            "SELECT human_mode FROM inbox_handoffs WHERE customer = ?", (customer,)
-        ).fetchone()
-        if human and human[0]:
+        human_mode = False
+        if inbox_db is not None:
+            with inbox_db.transaction():
+                inbox_db.execute(
+                    "INSERT INTO inbox_messages "
+                    "(wa_message_id, customer, direction, body, created_at, status) "
+                    "VALUES (%s, %s, 'inbound', %s, %s, 'received') "
+                    "ON CONFLICT (wa_message_id) DO NOTHING",
+                    (message_id, customer, inbound_body[:4096], int(time.time())),
+                )
+                human = inbox_db.execute(
+                    "SELECT human_mode FROM inbox_handoffs WHERE customer = %s", (customer,)
+                ).fetchone()
+                human_mode = bool(human and human["human_mode"])
+        if human_mode:
             return None, None, True
         if inbound_type != "text":
             return None, None, True
@@ -261,7 +267,18 @@ def receive(event):
     text_message_count = 0
     sent_count = 0
     coexistence_change_count = 0
-    with closing(sqlite3.connect(os.environ["WA_DATABASE"])) as db:
+    with ExitStack() as stack:
+        db = stack.enter_context(closing(sqlite3.connect(os.environ["WA_DATABASE"])))
+        try:
+            inbox_db = inbox_connect()
+            with inbox_db.transaction():
+                ensure_inbox_schema(inbox_db)
+            inbox_db = stack.enter_context(closing(inbox_db))
+        except (KeyError, psycopg.Error):
+            if "inbox_db" in locals() and inbox_db is not None:
+                inbox_db.close()
+            logger.exception("Staff inbox database is unavailable; continuing bot replies without inbox logging")
+            inbox_db = None
         db.execute("CREATE TABLE IF NOT EXISTS sessions (customer TEXT PRIMARY KEY, state TEXT)")
         db.execute("CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, reply TEXT, image_url TEXT, sent INTEGER)")
         db.execute(
@@ -323,17 +340,20 @@ def receive(event):
                     message_count += 1
                     if message.get("type") == "text":
                         text_message_count += 1
-                    reply, image_url, sent = process(db, message)
+                    reply, image_url, sent = process(db, message, inbox_db)
                     if not sent and reply is not None:
                         send_reply(phone_id, message["from"], reply, image_url)
                         with db:
                             db.execute("UPDATE events SET sent = 1 WHERE id = ?", (message["id"],))
-                            db.execute(
-                                "INSERT INTO inbox_messages "
-                                "(wa_message_id, customer, direction, body, created_at, status) "
-                                "VALUES (?, ?, 'outbound', ?, ?, 'sent')",
-                                ("bot:" + message["id"], message["from"], reply[:4096], int(time.time())),
-                            )
+                        if inbox_db is not None:
+                            with inbox_db.transaction():
+                                inbox_db.execute(
+                                    "INSERT INTO inbox_messages "
+                                    "(wa_message_id, customer, direction, body, created_at, status) "
+                                    "VALUES (%s, %s, 'outbound', %s, %s, 'sent') "
+                                    "ON CONFLICT (wa_message_id) DO NOTHING",
+                                    ("bot:" + message["id"], message["from"], reply[:4096], int(time.time())),
+                                )
                         sent_count += 1
         logger.info(
             "Webhook processed: entries=%d changes=%d coexistence_changes=%d matching_messages=%d text_messages=%d replies_sent=%d",
@@ -343,12 +363,17 @@ def receive(event):
         logger.info("Webhook contained no matching inbound text messages")
 
 
+def inbox_connect():
+    database_url = os.environ["INBOX_DATABASE_URL"]
+    return psycopg.connect(database_url, row_factory=dict_row, connect_timeout=5)
+
+
 def ensure_inbox_schema(db):
     db.execute(
         "CREATE TABLE IF NOT EXISTS inbox_messages ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, wa_message_id TEXT UNIQUE, "
+        "id BIGSERIAL PRIMARY KEY, wa_message_id TEXT UNIQUE, "
         "customer TEXT NOT NULL, direction TEXT NOT NULL, body TEXT NOT NULL, "
-        "created_at INTEGER NOT NULL, status TEXT NOT NULL)"
+        "created_at BIGINT NOT NULL, status TEXT NOT NULL)"
     )
     db.execute(
         "CREATE INDEX IF NOT EXISTS inbox_messages_customer_time "
@@ -356,8 +381,8 @@ def ensure_inbox_schema(db):
     )
     db.execute(
         "CREATE TABLE IF NOT EXISTS inbox_handoffs ("
-        "customer TEXT PRIMARY KEY, human_mode INTEGER NOT NULL DEFAULT 0, "
-        "updated_at INTEGER NOT NULL)"
+        "customer TEXT PRIMARY KEY, human_mode BOOLEAN NOT NULL DEFAULT FALSE, "
+        "updated_at BIGINT NOT NULL)"
     )
 
 
@@ -393,9 +418,9 @@ def inbox_handle(environ, start_response, respond):
     if environ["REQUEST_METHOD"] not in {"GET", "POST"}:
         return respond("405 Method Not Allowed", "Method not allowed")
     try:
-        with closing(sqlite3.connect(os.environ["WA_DATABASE"])) as db:
-            db.row_factory = sqlite3.Row
-            ensure_inbox_schema(db)
+        with closing(inbox_connect()) as db:
+            with db.transaction():
+                ensure_inbox_schema(db)
             if path == "/inbox" and environ["REQUEST_METHOD"] == "GET":
                 page = Path(__file__).with_name("inbox.html").read_bytes()
                 start_response("200 OK", [
@@ -406,7 +431,7 @@ def inbox_handle(environ, start_response, respond):
                 return [page]
             if path == "/inbox/api/conversations" and environ["REQUEST_METHOD"] == "GET":
                 rows = db.execute(
-                    "SELECT m.customer, m.body, m.created_at, m.direction, COALESCE(h.human_mode, 0) AS human_mode "
+                    "SELECT m.customer, m.body, m.created_at, m.direction, COALESCE(h.human_mode, FALSE) AS human_mode "
                     "FROM inbox_messages m LEFT JOIN inbox_handoffs h ON h.customer=m.customer "
                     "JOIN (SELECT customer, MAX(id) AS latest_id FROM inbox_messages GROUP BY customer) x "
                     "ON x.latest_id=m.id ORDER BY m.created_at DESC LIMIT 200"
@@ -417,12 +442,12 @@ def inbox_handle(environ, start_response, respond):
                 if not re.fullmatch(r"[0-9]{5,20}", customer):
                     return respond("400 Bad Request", '{"error":"Invalid customer number"}', "application/json")
                 rows = db.execute(
-                    "SELECT direction, body, created_at, status FROM inbox_messages WHERE customer = ? ORDER BY created_at, id LIMIT 1000",
+                    "SELECT direction, body, created_at, status FROM inbox_messages WHERE customer = %s ORDER BY created_at, id LIMIT 1000",
                     (customer,),
                 ).fetchall()
-                handoff = db.execute("SELECT human_mode FROM inbox_handoffs WHERE customer = ?", (customer,)).fetchone()
+                handoff = db.execute("SELECT human_mode FROM inbox_handoffs WHERE customer = %s", (customer,)).fetchone()
                 return respond("200 OK", json.dumps({
-                    "customer": customer, "human_mode": bool(handoff and handoff[0]), "messages": [dict(row) for row in rows],
+                    "customer": customer, "human_mode": bool(handoff and handoff["human_mode"]), "messages": [dict(row) for row in rows],
                 }), "application/json; charset=utf-8", [("Cache-Control", "no-store")])
             if path not in {"/inbox/api/reply", "/inbox/api/handoff"} or environ["REQUEST_METHOD"] != "POST":
                 return respond("404 Not Found", "Not found")
@@ -444,30 +469,30 @@ def inbox_handle(environ, start_response, respond):
                 return respond("400 Bad Request", '{"error":"Invalid customer number"}', "application/json")
             if path == "/inbox/api/handoff":
                 human_mode = bool(data.get("human_mode"))
-                with db:
+                with db.transaction():
                     db.execute(
-                        "INSERT INTO inbox_handoffs(customer, human_mode, updated_at) VALUES (?, ?, ?) "
-                        "ON CONFLICT(customer) DO UPDATE SET human_mode=excluded.human_mode, updated_at=excluded.updated_at",
-                        (customer, int(human_mode), int(time.time())),
+                        "INSERT INTO inbox_handoffs(customer, human_mode, updated_at) VALUES (%s, %s, %s) "
+                        "ON CONFLICT(customer) DO UPDATE SET human_mode=EXCLUDED.human_mode, updated_at=EXCLUDED.updated_at",
+                        (customer, human_mode, int(time.time())),
                     )
                 return respond("200 OK", json.dumps({"customer": customer, "human_mode": human_mode}), "application/json")
             message = data.get("message", "").strip()
             if not message or len(message) > 4096:
                 return respond("400 Bad Request", '{"error":"Message must be 1–4096 characters"}', "application/json")
             send_reply(os.environ["WA_PHONE_NUMBER_ID"], customer, message)
-            with db:
+            with db.transaction():
                 db.execute(
-                    "INSERT INTO inbox_handoffs(customer, human_mode, updated_at) VALUES (?, 1, ?) "
-                    "ON CONFLICT(customer) DO UPDATE SET human_mode=1, updated_at=excluded.updated_at",
+                    "INSERT INTO inbox_handoffs(customer, human_mode, updated_at) VALUES (%s, TRUE, %s) "
+                    "ON CONFLICT(customer) DO UPDATE SET human_mode=TRUE, updated_at=EXCLUDED.updated_at",
                     (customer, int(time.time())),
                 )
                 db.execute(
                     "INSERT INTO inbox_messages (wa_message_id, customer, direction, body, created_at, status) "
-                    "VALUES (?, ?, 'outbound', ?, ?, 'sent')",
+                    "VALUES (%s, %s, 'outbound', %s, %s, 'sent')",
                     ("staff:" + secrets.token_urlsafe(18), customer, message, int(time.time())),
                 )
             return respond("200 OK", '{"sent":true}', "application/json")
-    except (OSError, sqlite3.Error, KeyError):
+    except (OSError, sqlite3.Error, psycopg.Error, KeyError):
         logger.exception("Staff inbox request failed")
         return respond("503 Service Unavailable", '{"error":"Inbox is temporarily unavailable"}', "application/json")
 
