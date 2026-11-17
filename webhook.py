@@ -23,6 +23,7 @@ MENU_ASSETS = Path(__file__).with_name("menu-assets")
 EMBEDDED_SIGNUP_PAGE = Path(__file__).with_name("embedded_signup.html")
 META_APP_ID_DEFAULT = "2215718912674205"
 META_GRAPH_VERSION_DEFAULT = "v27.0"
+META_EMBEDDED_SIGNUP_CONFIG_ID_DEFAULT = "4105229339771295"
 COEXISTENCE_FIELDS = {"account_update", "history", "smb_app_state_sync", "smb_message_echoes"}
 
 
@@ -322,7 +323,7 @@ def app(environ, start_response):
     if environ["PATH_INFO"] == "/connect-whatsapp":
         if environ["REQUEST_METHOD"] != "GET":
             return respond("405 Method Not Allowed", "Method not allowed")
-        config_id = os.environ.get("META_EMBEDDED_SIGNUP_CONFIG_ID", "")
+        config_id = os.environ.get("META_EMBEDDED_SIGNUP_CONFIG_ID", META_EMBEDDED_SIGNUP_CONFIG_ID_DEFAULT)
         app_id = os.environ.get("META_APP_ID", META_APP_ID_DEFAULT)
         graph_version = os.environ.get("META_GRAPH_VERSION", META_GRAPH_VERSION_DEFAULT)
         if (not re.fullmatch(r"[0-9]{5,32}", config_id)
