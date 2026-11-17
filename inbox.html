@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ada Place &amp; Grill — Staff Inbox</title>
+<style>
+:root{color-scheme:dark;--bg:#101010;--line:#333;--orange:#ff8a00;--text:#f7f3ed;--muted:#b6afa7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,sans-serif}
+header{padding:16px 20px;background:#161616;border-bottom:2px solid var(--orange);display:flex;justify-content:space-between;align-items:center}
+h1{font-size:20px;margin:0}small,.muted{color:var(--muted)}main{height:calc(100vh - 66px);display:grid;grid-template-columns:minmax(250px,340px) 1fr}
+aside{overflow:auto;border-right:1px solid var(--line)}#threadList{padding:8px}
+.thread{display:block;width:100%;text-align:left;color:inherit;background:transparent;border:0;border-bottom:1px solid var(--line);padding:14px;cursor:pointer}
+.thread:hover,.thread.active{background:#29231c}.thread strong{display:block}.thread span{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:5px}
+section{display:flex;flex-direction:column;min-width:0}#empty{margin:auto;color:var(--muted)}#chatHead{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+#messages{flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:10px}.bubble{max-width:min(75%,680px);padding:10px 13px;border-radius:12px;background:#292929;white-space:pre-wrap;overflow-wrap:anywhere}.outbound{align-self:flex-end;background:#743d00}.stamp{display:block;color:#ddd;font-size:11px;margin-top:5px}
+form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}textarea{flex:1;resize:vertical;min-height:44px;max-height:140px;background:#242424;color:var(--text);border:1px solid #555;border-radius:8px;padding:10px;font:inherit}
+button,.toggle{background:var(--orange);color:#160e04;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}.toggle{background:#333;color:var(--text)}.toggle.on{background:#8d251c}.status{padding:0 14px;color:var(--muted);font-size:13px}
+@media(max-width:700px){main{grid-template-columns:120px 1fr}.thread{padding:10px 6px}.thread span{display:none}.bubble{max-width:90%}header{padding:12px}}
+</style></head>
+<body><header><div><h1>Ada Place &amp; Grill · Staff Inbox</h1><small>WhatsApp Cloud API</small></div><small id="refreshStatus">Connecting…</small></header>
+<main><aside><div id="threadList"></div></aside><section><div id="empty">Choose a conversation to view messages.</div>
+<div id="chatHead" hidden><strong id="customer"></strong><button id="handoff" class="toggle">Pause bot</button></div>
+<div id="messages" hidden></div><div id="status" class="status"></div>
+<form id="replyForm" hidden><textarea id="replyText" maxlength="4096" placeholder="Write a reply…" required></textarea><button>Send</button></form></section></main>
+<script>
+let selected="",paused=false;const $=id=>document.getElementById(id);
+async function api(url,options={}){const r=await fetch(url,{cache:"no-store",...options});if(!r.ok)throw new Error(await r.text());return r.json()}
+function time(ts){return new Date(ts*1000).toLocaleString()}
+async function loadThreads(){const rows=await api("/inbox/api/conversations");const box=$("threadList");box.replaceChildren();for(const row of rows){const b=document.createElement("button");b.className="thread"+(row.customer===selected?" active":"");const n=document.createElement("strong");n.textContent="+"+row.customer+(row.human_mode?" · staff":"");const p=document.createElement("span");p.textContent=row.body;b.append(n,p);b.onclick=()=>openThread(row.customer);box.append(b)}$("refreshStatus").textContent="Updated "+new Date().toLocaleTimeString()}
+async function openThread(customer){selected=customer;$("empty").hidden=true;$("chatHead").hidden=false;$("messages").hidden=false;$("replyForm").hidden=false;$("customer").textContent="+"+customer;await loadMessages();await loadThreads()}
+async function loadMessages(){if(!selected)return;const data=await api("/inbox/api/messages?customer="+encodeURIComponent(selected));paused=data.human_mode;const btn=$("handoff");btn.textContent=paused?"Resume bot":"Pause bot";btn.classList.toggle("on",paused);const box=$("messages");box.replaceChildren();for(const m of data.messages){const b=document.createElement("div");b.className="bubble "+m.direction;b.append(document.createTextNode(m.body));const stamp=document.createElement("small");stamp.className="stamp";stamp.textContent=(m.direction==="inbound"?"Customer":"Ada staff/bot")+" · "+time(m.created_at);b.append(stamp);box.append(b)}box.scrollTop=box.scrollHeight}
+$("handoff").onclick=async()=>{if(!selected)return;try{const d=await api("/inbox/api/handoff",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customer:selected,human_mode:!paused})});paused=d.human_mode;await loadMessages();await loadThreads()}catch(e){$("status").textContent="Could not change bot handoff: "+e.message}}
+$("replyForm").onsubmit=async e=>{e.preventDefault();if(!selected)return;const message=$("replyText").value.trim();if(!message)return;try{await api("/inbox/api/reply",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customer:selected,message})});$("replyText").value="";$("status").textContent="Reply sent.";await loadMessages();await loadThreads()}catch(err){$("status").textContent="Reply failed: "+err.message}}
+async function refresh(){try{await loadThreads();if(selected)await loadMessages();$("status").textContent=""}catch(e){$("refreshStatus").textContent="Inbox unavailable";$("status").textContent=e.message}}
+refresh();setInterval(refresh,10000);
+</script></body></html>
