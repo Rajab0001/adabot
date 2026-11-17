@@ -1,4 +1,3 @@
-Warning: b was declared with const; use let for reassignable variables.
 {
   "Rice": [
     ["Jollof Rice", 900, "ada-jollof-card.png"],

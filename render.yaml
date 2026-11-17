@@ -1,4 +1,3 @@
-Warning: b was declared with const; use let for reassignable variables.
 services:
   - type: web
     name: adabot-test
