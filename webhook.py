@@ -26,7 +26,7 @@ MENU_ASSETS = Path(__file__).with_name("menu-assets")
 EMBEDDED_SIGNUP_PAGE = Path(__file__).with_name("embedded_signup.html")
 META_APP_ID_DEFAULT = "2215718912674205"
 META_GRAPH_VERSION_DEFAULT = "v27.0"
-META_EMBEDDED_SIGNUP_CONFIG_ID_DEFAULT = "3052963468300441"
+META_EMBEDDED_SIGNUP_CONFIG_ID_DEFAULT = "1553383993216831"
 COEXISTENCE_FIELDS = {"account_update", "history", "smb_app_state_sync", "smb_message_echoes"}
 
 
