@@ -104,9 +104,8 @@ def complete_coexistence_signup(data):
         messaging_ids = [details["waba_id"]]
     if not _number_id(phone_id) or not messaging_ids or not _number_id(str(messaging_ids[0])):
         raise ValueError("Meta did not return the connected phone and messaging account IDs.")
-    expected_phone_id = os.environ.get("WA_PHONE_NUMBER_ID", "")
-    if expected_phone_id and not hmac.compare_digest(phone_id, expected_phone_id):
-        raise ValueError("The signup selected a different phone number than the Ada bot uses.")
+    # Coexistence can connect a different WhatsApp Business app number.
+    # The existing runtime config remains unchanged until the new number is verified.
 
     token_result = exchange_signup_code(code)
     business_token = token_result.get("access_token")
@@ -119,6 +118,15 @@ def complete_coexistence_signup(data):
     )
     if phone_status.get("is_on_biz_app") is not True or phone_status.get("platform_type") != "CLOUD_API":
         raise ValueError("Meta has not confirmed that this number is active in both the Business app and Cloud API.")
+
+    runtime_token = os.environ.get("WA_ACCESS_TOKEN", "")
+    bot_ready = False
+    if runtime_token:
+        try:
+            graph_request(phone_id, runtime_token, {"fields": "id"})
+            bot_ready = True
+        except MetaAPIError:
+            logger.warning("Coexistence connected, but the current bot token cannot access the new phone number")
 
     messaging_id = str(messaging_ids[0])
     graph_request(f"{messaging_id}/subscribed_apps", business_token, {}, method="POST")
@@ -139,7 +147,12 @@ def complete_coexistence_signup(data):
         "Coexistence onboarding completed: phone_id=%s messaging_account_id=%s app_number=%s",
         phone_id, messaging_id, phone_status.get("is_on_biz_app"),
     )
-    return {"connected": True, "contacts_sync": bool(sync_results), "phone_number_id": phone_id}
+    return {
+        "connected": True,
+        "contacts_sync": bool(sync_results),
+        "phone_number_id": phone_id,
+        "bot_ready": bot_ready,
+    }
 
 
 def create_signup_csrf(secret):
@@ -305,9 +318,10 @@ def receive(event):
                     messages = []
                 if not isinstance(statuses, list):
                     statuses = []
+                change_phone_id = metadata_phone_id if _number_id(metadata_phone_id) else None
                 print(
                     f"Webhook change received: field={field} "
-                    f"phone_id_match={metadata_phone_id == phone_id} "
+                    f"phone_id_valid={change_phone_id is not None} "
                     f"inbound_messages={len(messages)} statuses={len(statuses)}",
                     flush=True,
                 )
@@ -330,10 +344,10 @@ def receive(event):
                 if field != "messages":
                     logger.info("Ignoring unsupported WhatsApp webhook field=%s", field)
                     continue
-                if metadata_phone_id != phone_id:
+                if change_phone_id is None:
                     logger.warning(
-                        "Ignoring webhook change: phone number ID mismatch; expected=%s received=%s messages=%d",
-                        phone_id, metadata_phone_id, len(messages),
+                        "Ignoring webhook change with missing or invalid phone number ID; messages=%d",
+                        len(messages),
                     )
                     continue
                 for message in messages:
@@ -342,7 +356,7 @@ def receive(event):
                         text_message_count += 1
                     reply, image_url, sent = process(db, message, inbox_db)
                     if not sent and reply is not None:
-                        send_reply(phone_id, message["from"], reply, image_url)
+                        send_reply(change_phone_id, message["from"], reply, image_url)
                         with db:
                             db.execute("UPDATE events SET sent = 1 WHERE id = ?", (message["id"],))
                         if inbox_db is not None:
