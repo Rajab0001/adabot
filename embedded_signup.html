@@ -23,7 +23,7 @@
     <div class="mark">Ada Place &amp; Grill</div>
     <h1>Connect WhatsApp Business</h1>
     <p>Connect the Ada business number so it can continue using the bot and the WhatsApp Business app. Sign in with the Meta account that manages the business, and keep the WhatsApp Business app available on the phone for the confirmation step.</p>
-    <p class="small">Meta controls the login and number verification. This page will only complete the connection for the phone number already configured for the Ada bot.</p>
+    <p class="small">Meta controls the login and number verification. A successful connection can use the WhatsApp Business app number you select. The bot will only send from it if its current Meta token has permission to that number.</p>
     <button id="connect" type="button" disabled>Loading Meta login…</button>
     <div id="status" role="status" aria-live="polite">Preparing secure connection…</div>
   </main>
@@ -81,7 +81,9 @@
       }).then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "The server could not complete the connection.");
-        show("Connected. Meta confirmed this number is available in both WhatsApp Business and Cloud API.");
+        show(result.bot_ready
+          ? "Connected. Meta confirmed WhatsApp Business app and Cloud API access, and the current bot token can use this number."
+          : "Connected in Meta, but the bot token does not have access to this number yet. The existing bot setup was left unchanged; the Render WA_ACCESS_TOKEN must be updated before the bot can reply.");
       }).catch((error) => {
         show(error.message || "The connection could not be completed. The current bot configuration remains in place.");
         button.disabled = false;
