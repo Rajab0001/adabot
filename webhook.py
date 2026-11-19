@@ -300,7 +300,7 @@ def forward_inbound_to_whaleads(raw, meta_signature):
             if response.status >= 300:
                 logger.warning("WhaLeads inbound mirror returned HTTP %s", response.status)
     except HTTPError as exc:
-        detail = exc.read(512).decode("utf-8", errors="replace").replace("\\n", " ")
+        detail = exc.read(512).decode("utf-8", errors="replace").replace("\n", " ")
         ray = exc.headers.get("CF-Ray", "") if exc.headers else ""
         logger.warning("WhaLeads inbound mirror failed: HTTP %s cf-ray=%s body=%r", exc.code, ray, detail)
     except (URLError, TimeoutError, OSError) as exc:
@@ -336,7 +336,7 @@ def mirror_bot_reply(customer, wamid, body):
             if response.status >= 300:
                 logger.warning("WhaLeads bot reply mirror returned HTTP %s", response.status)
     except HTTPError as exc:
-        detail = exc.read(512).decode("utf-8", errors="replace").replace("\\n", " ")
+        detail = exc.read(512).decode("utf-8", errors="replace").replace("\n", " ")
         ray = exc.headers.get("CF-Ray", "") if exc.headers else ""
         logger.warning("WhaLeads bot reply mirror failed: HTTP %s cf-ray=%s body=%r", exc.code, ray, detail)
     except (URLError, TimeoutError, OSError) as exc:
