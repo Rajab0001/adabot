@@ -288,14 +288,22 @@ def forward_inbound_to_whaleads(raw, meta_signature):
     request = Request(
         _whaleads_url() + "/webhooks/meta",
         data=raw,
-        headers={"Content-Type": "application/json", "X-Hub-Signature-256": meta_signature},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "AdaPlaceGrillBotBridge/1.0",
+            "X-Hub-Signature-256": meta_signature,
+        },
         method="POST",
     )
     try:
         with urlopen(request, timeout=4) as response:
             if response.status >= 300:
                 logger.warning("WhaLeads inbound mirror returned HTTP %s", response.status)
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+    except HTTPError as exc:
+        detail = exc.read(512).decode("utf-8", errors="replace").replace("\\n", " ")
+        ray = exc.headers.get("CF-Ray", "") if exc.headers else ""
+        logger.warning("WhaLeads inbound mirror failed: HTTP %s cf-ray=%s body=%r", exc.code, ray, detail)
+    except (URLError, TimeoutError, OSError) as exc:
         logger.warning("WhaLeads inbound mirror failed: %s", exc)
 
 
@@ -316,14 +324,22 @@ def mirror_bot_reply(customer, wamid, body):
     request = Request(
         _whaleads_url() + "/webhooks/render-bridge",
         data=raw,
-        headers={"Content-Type": "application/json", "X-Ada-Bridge-Signature": signature},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "AdaPlaceGrillBotBridge/1.0",
+            "X-Ada-Bridge-Signature": signature,
+        },
         method="POST",
     )
     try:
         with urlopen(request, timeout=4) as response:
             if response.status >= 300:
                 logger.warning("WhaLeads bot reply mirror returned HTTP %s", response.status)
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+    except HTTPError as exc:
+        detail = exc.read(512).decode("utf-8", errors="replace").replace("\\n", " ")
+        ray = exc.headers.get("CF-Ray", "") if exc.headers else ""
+        logger.warning("WhaLeads bot reply mirror failed: HTTP %s cf-ray=%s body=%r", exc.code, ray, detail)
+    except (URLError, TimeoutError, OSError) as exc:
         logger.warning("WhaLeads bot reply mirror failed: %s", exc)
 
 
