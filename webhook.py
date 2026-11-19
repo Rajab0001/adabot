@@ -27,6 +27,7 @@ EMBEDDED_SIGNUP_PAGE = Path(__file__).with_name("embedded_signup.html")
 META_APP_ID_DEFAULT = "2215718912674205"
 META_GRAPH_VERSION_DEFAULT = "v27.0"
 META_EMBEDDED_SIGNUP_CONFIG_ID_DEFAULT = "1553383993216831"
+WHALEADS_BASE_URL_DEFAULT = "https://ada-place-grill-inbox.eyoleabubakar.workers.dev"
 COEXISTENCE_FIELDS = {"account_update", "history", "smb_app_state_sync", "smb_message_echoes"}
 
 
@@ -269,7 +270,61 @@ def send_reply(phone_id, recipient, reply, image_url=None):
                  "Content-Type": "application/json"},
     )
     with urlopen(request, timeout=8) as response:
+        try:
+            result = json.loads(response.read().decode("utf-8"))
+        except (ValueError, OSError):
+            result = {}
         print(f"WhatsApp reply accepted: kind={'image' if image_url else 'text'} HTTP {response.status}", flush=True)
+        messages = result.get("messages", []) if isinstance(result, dict) else []
+        return messages[0].get("id") if messages and isinstance(messages[0], dict) else None
+
+
+def _whaleads_url():
+    return os.environ.get("WHALEADS_BASE_URL", WHALEADS_BASE_URL_DEFAULT).rstrip("/")
+
+
+def forward_inbound_to_whaleads(raw, meta_signature):
+    """Mirror Meta's signed webhook to WhaLeads while Render remains the Meta callback."""
+    request = Request(
+        _whaleads_url() + "/webhooks/meta",
+        data=raw,
+        headers={"Content-Type": "application/json", "X-Hub-Signature-256": meta_signature},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=4) as response:
+            if response.status >= 300:
+                logger.warning("WhaLeads inbound mirror returned HTTP %s", response.status)
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        logger.warning("WhaLeads inbound mirror failed: %s", exc)
+
+
+def mirror_bot_reply(customer, wamid, body):
+    """Mirror a successful bot reply with an HMAC accepted only by our WhaLeads bridge."""
+    if not wamid:
+        logger.warning("Bot reply was not mirrored because Meta returned no message ID")
+        return
+    payload = {
+        "type": "bot_outbound",
+        "customer": str(customer),
+        "wamid": str(wamid),
+        "body": str(body)[:4096],
+        "timestamp": int(time.time()),
+    }
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    signature = "sha256=" + hmac.new(os.environ["WA_APP_SECRET"].encode(), raw, hashlib.sha256).hexdigest()
+    request = Request(
+        _whaleads_url() + "/webhooks/render-bridge",
+        data=raw,
+        headers={"Content-Type": "application/json", "X-Ada-Bridge-Signature": signature},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=4) as response:
+            if response.status >= 300:
+                logger.warning("WhaLeads bot reply mirror returned HTTP %s", response.status)
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        logger.warning("WhaLeads bot reply mirror failed: %s", exc)
 
 
 def receive(event):
@@ -356,7 +411,8 @@ def receive(event):
                         text_message_count += 1
                     reply, image_url, sent = process(db, message, inbox_db)
                     if not sent and reply is not None:
-                        send_reply(change_phone_id, message["from"], reply, image_url)
+                        sent_wamid = send_reply(change_phone_id, message["from"], reply, image_url)
+                        mirror_bot_reply(message["from"], sent_wamid, reply)
                         with db:
                             db.execute("UPDATE events SET sent = 1 WHERE id = ?", (message["id"],))
                         if inbox_db is not None:
@@ -518,6 +574,35 @@ def app(environ, start_response):
 
     if environ["PATH_INFO"] == "/health" and environ["REQUEST_METHOD"] == "GET":
         return respond("200 OK", "OK")
+    if environ["PATH_INFO"] == "/bridge/handoff":
+        if environ["REQUEST_METHOD"] != "POST":
+            return respond("405 Method Not Allowed", "Method not allowed")
+        try:
+            length = int(environ.get("CONTENT_LENGTH") or 0)
+            if not 1 <= length <= 8192 or not environ.get("CONTENT_TYPE", "").startswith("application/json"):
+                return respond("400 Bad Request", '{"error":"Invalid request"}', "application/json")
+            raw = environ["wsgi.input"].read(length)
+            expected = "sha256=" + hmac.new(os.environ["WA_APP_SECRET"].encode(), raw, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, environ.get("HTTP_X_ADA_BRIDGE_SIGNATURE", "")):
+                return respond("403 Forbidden", '{"error":"Invalid signature"}', "application/json")
+            data = json.loads(raw.decode("utf-8"))
+            customer = str(data.get("customer", ""))
+            if not re.fullmatch(r"[0-9]{5,20}", customer) or data.get("human_mode") is not True:
+                return respond("400 Bad Request", '{"error":"Invalid handoff"}', "application/json")
+            with closing(inbox_connect()) as db:
+                with db.transaction():
+                    ensure_inbox_schema(db)
+                    db.execute(
+                        "INSERT INTO inbox_handoffs(customer, human_mode, updated_at) VALUES (%s, TRUE, %s) "
+                        "ON CONFLICT(customer) DO UPDATE SET human_mode=TRUE, updated_at=EXCLUDED.updated_at",
+                        (customer, int(time.time())),
+                    )
+            return respond("200 OK", '{"human_mode":true}', "application/json")
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return respond("400 Bad Request", '{"error":"Invalid request"}', "application/json")
+        except (OSError, psycopg.Error):
+            logger.exception("Signed staff handoff failed")
+            return respond("503 Service Unavailable", '{"error":"Handoff unavailable"}', "application/json")
     inbox_response = inbox_handle(environ, start_response, respond)
     if inbox_response is not None:
         return inbox_response
@@ -618,6 +703,7 @@ def app(environ, start_response):
             return respond("403 Forbidden", "Invalid signature")
         event = json.loads(raw)
         print(f"Received signed webhook POST: bytes={length}", flush=True)
+        forward_inbound_to_whaleads(raw, expected)
         receive(event)
     except (ValueError, TypeError, KeyError):
         logger.exception("Rejected malformed webhook event or missing configuration")
